@@ -1,10 +1,10 @@
-# Alza Affiliate → Google Sheets (PUBLIC v1.0.0)
+# Alza Affiliate to Google Sheets (PUBLIC v0.99)
 
-Neoficiální, komunitní, **read-only** konektor do Google Sheets pro **jeden affiliate účet na jednu soukromou tabulku**. Načítá provizní doklady, dobropisy, historická vyúčtování, jednotlivé produktové položky a agregace. Nevyžaduje server, cloudové heslo u autora ani placenou databázi; vše běží pod vlastním Google účtem partnera.
+Neoficiální, komunitní, **read-only** konektor do Google Sheets pro **Alza.cz affiliate účet na Google Sheet**. Načítá provizní doklady, dobropisy, historická vyúčtování, jednotlivé produktové položky a agregace. Nevyžaduje server, cloudové heslo u autora ani placenou databázi; vše běží pod vlastním Google účtem, data zůstávají i při přerušení načítání.
 
 > **Nejde o oficiální ani podporované Alza API.** Používá interní webové endpointy pozorované v Alza Affiliate administraci. Alza může jejich chování kdykoliv změnit. Ověřeno lokálními integračními testy se simulovaným API; veřejnou v1.0 je nutné ještě ověřit v reálném Apps Script účtu.
 
-## Instalace (pro partnera, 10–15 minut)
+## Instalace (10–15 minut)
 
 1. Na [Google Sheets](https://sheets.google.com) vytvoř **novou prázdnou tabulku**. Neinstaluj to do tabulky se stávajícím soukromým affiliate reportingem.
 2. V ní klikni **Rozšíření → Apps Script**.
@@ -65,9 +65,6 @@ Provize se zobrazují v **měně, kterou daný affiliate účet vrací v `curren
 - Údaje se ukládají přes `PropertiesService.getUserProperties()` v **účtu uživatele, který instaluje a vytváří spouštěče**. Heslo se **nikdy nezapisuje do zdrojových souborů, tabulky nebo Sync Logu**.
 - **Nesdílej Google Sheet ani Apps Script s editory**, kterým nedůvěřuješ. Editor skriptu může upravit kód a získat data nebo pověření při jeho spuštění pod tvým účtem. `UserProperties` není nezávislý hardwarový trezor.
 - Autor tohoto repozitáře nemá přístup k přihlašovacím údajům ani k tvým datům. Komunikace probíhá pouze z tvého Apps Scriptu na `affiliate.alza.cz` a v Google infrastruktuře.
-- Není k dispozici žádná veřejná webová aplikace ani upstream admin účet. Pouze read-only přístup k vlastním partnerským datům.
-
-Více viz [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Omezení v1.0
 
@@ -75,8 +72,9 @@ Více viz [`docs/SECURITY.md`](docs/SECURITY.md).
 - Import historie závisí na tom, co partnerský účet a upstream stále zpřístupňují. U starších dokladů bez dostupného vyúčtování nelze úplnost slíbit.
 - Úplný detail vyúčtování může být rozdělen na desítky stránek; u velkých účtů může jednorázová synchronizace narazit na limit 6 minut Apps Scriptu. Následující běhy neobnovují neúplné stránky po jednotlivých detailech; případný limit je třeba řešit menším obdobím a další verzí.
 - Google Sheets má limity kapacity a výkonu. Pro rozsáhlé účty nebo veřejnou centralizovanou službu je vhodnější databáze.
-- Neimportuje reklamní náklady, nepočítá ROI ani skutečný podnikatelský zisk.
+- Neimportuje reklamní náklady, nepočítá ROI ani skutečný podnikatelský zisk, ale to si můžete dopsat do dalších listů a používat odkazy mezi listy, poradíte si :-).
 - Projekt slouží jedinému affiliate účtu na jednu tabulku. Pro druhý účet vytvoř druhou nezávislou tabulku.
+- Tohle ReadMe psal ChatGPT, protože já jsem líný jako to prase.
 
 ## Vývoj / testy
 
@@ -88,4 +86,4 @@ Testy jsou zcela offline s anonymními simulovanými odpověďmi. Testují insta
 
 ## Licence a odpovědnost
 
-MIT – viz [`LICENSE`](LICENSE). Název Alza je použit pouze k identifikaci cílové služby; tento projekt není oficiálním produktem společnosti Alza.
+WTFPL – viz [`LICENSE`](LICENSE). Název Alza je použit pouze k identifikaci cílové služby; tento projekt není oficiálním produktem společnosti Alzacz a.s.
