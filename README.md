@@ -8,8 +8,8 @@ Neoficiální, komunitní, **read-only** konektor do Google Sheets pro **Alza.cz
 
 1. Na [Google Sheets](https://sheets.google.com) vytvoř **novou prázdnou tabulku**. Neinstaluj to do tabulky se stávajícím soukromým affiliate reportingem.
 2. V ní klikni **Rozšíření → Apps Script**.
-3. Vlož **6 souborů `.gs`** ze složky [`src`](src) jako samostatné soubory se stejnými názvy: `Config.gs`, `Api.gs`, `Sheets.gs`, `Sync.gs`, `Items.gs`, `Setup.gs`. Výchozí `Kód.gs` smaž nebo v něm nenechávej duplicitní funkce.
-4. Přidej soubor **HTML → `Setup`**, vlož obsah [`src/Setup.html`](src/Setup.html). Není to webová aplikace: HTML funguje jako instalační dialog uvnitř Google Sheets.
+3. Vlož **6 souborů `.gs`** ze složky [`src`](src) jako samostatné soubory se stejnými názvy: `Config.gs`, `Api.gs`, `Sheets.gs`, `Sync.gs`, `Items.gs`, `Setup.gs`. Výchozí `Kód.gs` smaž nebo v něm nenechávej duplicitní funkce. Vše je case sensitive, takže na velikosti prvních písmen souborů záleží ;-).
+4. Přidej soubor **HTML → `Set`**, vlož obsah [`src/Set.html`](src/Set.html). Není to webová aplikace: HTML funguje jako instalační dialog uvnitř Google Sheets.
 5. Volitelně vlož manifest [`src/appsscript.json`](src/appsscript.json) přes **Nastavení projektu → Zobrazit soubor manifestu `appsscript.json` v editoru**. Není nutný pro základní provoz.
 6. Ulož projekt. V Apps Scriptu spusť funkci **`openAffiliateSetup`** (Google požádá o oprávnění k tabulce, externím HTTP požadavkům a časovačům). Nebo znovu otevři Google Sheet a použij menu **Alza Affiliate → Nastavení / instalace**.
 7. V průvodci vyplň affiliate **e-mail, heslo a datum od**. Klikni **Ověřit přístup a nainstalovat**. Přihlášení se ověří přímo na `affiliate.alza.cz` a nastaví se časové spouštěče.

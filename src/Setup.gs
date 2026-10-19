@@ -9,7 +9,7 @@ function onOpen() {
     .addToUi();
 }
 function openAffiliateSetup() {
-  const html=HtmlService.createHtmlOutputFromFile('Setup').setWidth(480).setHeight(430);
+  const html=HtmlService.createHtmlOutputFromFile('Set').setWidth(480).setHeight(430);
   SpreadsheetApp.getUi().showModalDialog(html,'Alza Affiliate – instalace');
 }
 function setupAffiliate(input) {
