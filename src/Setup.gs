@@ -2,6 +2,7 @@
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Alza Affiliate')
     .addItem('Nastavení / instalace', 'openAffiliateSetup')
+    .addItem('Připojení iPhone Zkratek', 'openIPhoneGateway')
     .addSeparator()
     .addItem('Synchronizovat provize teď', 'runAffiliateNow')
     .addItem('Synchronizovat položky teď', 'runAffiliateItemsNow')
