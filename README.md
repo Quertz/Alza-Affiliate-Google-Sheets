@@ -91,8 +91,10 @@ node tests/smoke.test.js
 
 Testy běží offline proti syntetickým datům. Kontrolují 4h/1h triggery, e-shop měny, autentizaci, doklady, 857 stránkovaných záznamů ve vyúčtování, nulové a neobvyklé dobropisy, TOP 10, hodinovou historii a nativní datumová pole pro Looker Studio.
 
+
 **DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE.** Nejde o oficiální produkt ani záruku podpory ze strany Alza.cz a.s.
-Licence: [LICENCE](LICENCE)
+
+Licence: [LICENCE.md](LICENCE.md)
 
 ---
 
