@@ -2,6 +2,7 @@
 function affExistingItems_() {
   const groups=new Map();
   affRead_(AFF.sheets.items,H.items).forEach(row=>{
+    row[3]=affDate_(row[3]);
     const key=String(row[0]);
     if(!groups.has(key))groups.set(key,[]);
     groups.get(key).push(row);
@@ -11,6 +12,7 @@ function affExistingItems_() {
 function affItemAudit_() {
   const map=new Map();
   affRead_(AFF.sheets.itemState,H.itemState).forEach(row=>{
+    row[1]=affDate_(row[1]);
     const id=String(row[0]);if(map.has(id))throw new Error('Duplicitní doklad v auditu položek.');
     map.set(id,row);
   });
@@ -18,7 +20,7 @@ function affItemAudit_() {
 }
 function affLineItems_(detail,doc,now) {
   const root=detail.document, expected=doc[6],timestamp=String(root.createdDate||'');
-  if(affDate_(timestamp)!==doc[3] || !/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(timestamp))
+  if(affDate_(timestamp)!==affDate_(doc[3]) || !/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(timestamp))
     throw new Error('Datum detailu a dokladu se liší.');
   const cur=String(root.currencyCode||doc[8]);
   if(cur!==String(doc[8]))throw new Error('Měna detailu nesouhlasí s dokladem.');
@@ -58,7 +60,8 @@ function affSyncItems_() {
     const recent=(Date.now()-Date.parse(String(doc[3])+'T12:00:00Z'))<30*86400000;
     const same=Boolean(audit && Number.isFinite(Number(audit[6])) &&
       Math.abs(Number(audit[6])-Number(doc[6]))<=AFF.tolerance);
-    const hasRows=items.has(id)?items.get(id).length>0:true;
+    const expectedCount=audit?Number(audit[4]):NaN;
+    const hasRows=Boolean(audit && (expectedCount===0 || (items.has(id) && items.get(id).length===expectedCount)));
     if(audit && audit[8]==='OK' && same && hasRows && (!recent || elapsed<7*86400000))continue;
     if(audit && audit[8]!=='OK' && elapsed<24*3600000)continue;
     checked++;
@@ -84,23 +87,16 @@ function affSyncItems_() {
   affWrite_(AFF.sheets.itemState,H.itemState,auditRows);
   affWrite_(AFF.sheets.items,H.items,activeItems);
   affWrite_(AFF.sheets.products,H.products,aggregate.products);
-  affWrite_(AFF.sheets.hours,H.hours,aggregate.hours);
   affWrite_(AFF.sheets.topWeeks,H.top,aggregate.weeks);
   affWrite_(AFF.sheets.topMonths,H.top,aggregate.months);
   affMoneyFormat_(AFF.sheets.items,[9,11,12],activeItems.length);
   affMoneyFormat_(AFF.sheets.products,[6,7],aggregate.products.length);
-  affMoneyFormat_(AFF.sheets.hours,[5],aggregate.hours.length);
   affMoneyFormat_(AFF.sheets.topWeeks,[5],aggregate.weeks.length);
   affMoneyFormat_(AFF.sheets.topMonths,[5],aggregate.months.length);
-  affWrite_(AFF.sheets.progress,H.progress,[
-    ['Známých dokladů',docs.length,'Jen doklady stažené z Alzy'],
-    ['Kontrolováno',audits.size,'Počet dokladů s výsledkem stažení položek'],
-    ['V pořádku',auditRows.filter(r=>r[8]==='OK' && docIndex.has(String(r[0]))).length,'Součet položek souhlasí s dokladem'],
-    ['Nesouhlasí',auditRows.filter(r=>r[8]==='NESOUHLASÍ' && docIndex.has(String(r[0]))).length,'Doklady vynechané z žebříčků'],
-    ['Chybné',auditRows.filter(r=>r[8]==='CHYBA' && docIndex.has(String(r[0]))).length,'Opakovat po 24 hodinách'],
-    ['Zbývá',docs.filter(r=>!audits.has(String(r[1]))).length,'Nové dokumenty bez auditu'],
-    ['Položky',activeItems.length,'Položky z archivu'],
-    ['Poslední běh UTC',now,'Provádí se po dávkách']]);
+  // The two requested sync/status views share one unique sheet name.
+  // Per-document status remains flat; overall progress appears on Dashboard.
+  const dashboard=affBook_().getSheetByName(AFF.sheets.dashboard);
+  if(dashboard)affDashboardProgress_(dashboard);
   affLinkify_(AFF.sheets.items,7,activeItems);
   affLinkify_(AFF.sheets.products,9,aggregate.products);
   affLinkify_(AFF.sheets.topWeeks,9,aggregate.weeks);
@@ -128,31 +124,28 @@ function affIsoWeek_(day) {
   return yr+'-W'+String(1+Math.round((d-first)/604800000)).padStart(2,'0');
 }
 function affItemAnalytics_(rows,auditMap,docsMap) {
-  const products=new Map(),hours=new Map(),weeks=new Map(),months=new Map();
+  const products=new Map(),weeks=new Map(),months=new Map();
   function add(map,key,base,row){
     if(!map.has(key))map.set(key,Object.assign({orders:new Set(),docs:new Set(),pieces:0,value:0,commission:0,last:''},base));
     const target=map.get(key);
     target.docs.add(String(row[0]));if(row[2])target.orders.add(String(row[2]));
     target.pieces+=Number(row[7]);target.value+=Number(row[8]);target.commission+=Number(row[11]);
-    target.last=target.last>row[3]?target.last:row[3];
+    const day=affDate_(row[3]);
+    target.last=target.last>day?target.last:day;
     return target;
   }
   rows.forEach(row=>{
     const id=String(row[0]),audit=auditMap.get(id),doc=docsMap.get(id);
     if(!doc || !audit || audit[8]!=='OK' || Math.abs(Number(audit[6])-Number(doc[6]))>AFF.tolerance)return;
     const currency=String(row[12]),code=String(row[5]).replace(/^'(?=[=+@\-])/,'');
-    const url=String(row[6]),hour=Number(row[4]),day=String(row[3]);
+    const url=String(row[6]),day=affDate_(row[3]);
     add(products,currency+'|'+code,{code,currency,url},row);
-    add(hours,currency+'|'+hour,{hour,currency},row);
     const week=affIsoWeek_(day),month=day.slice(0,7);
     add(weeks,week+'|'+currency+'|'+code,{period:week,currency,code,url},row);
     add(months,month+'|'+currency+'|'+code,{period:month,currency,code,url},row);
   });
   const productRows=Array.from(products.values()).sort((a,b)=>b.commission-a.commission).map(p=>[
     affSafe_(p.code),p.currency,p.orders.size,p.docs.size,p.pieces,p.value,p.commission,p.last,p.url
-  ]);
-  const hourRows=Array.from(hours.values()).sort((a,b)=>a.currency.localeCompare(b.currency)||a.hour-b.hour).map(h=>[
-    h.hour,h.currency,h.orders.size,h.docs.size,h.commission
   ]);
   function ranking(map){
     const byPeriod=new Map();
@@ -170,5 +163,5 @@ function affItemAnalytics_(rows,auditMap,docsMap) {
     });
     return result;
   }
-  return {products:productRows,hours:hourRows,weeks:ranking(weeks),months:ranking(months)};
+  return {products:productRows,weeks:ranking(weeks),months:ranking(months)};
 }

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="cs"><head><base target="_top"><meta charset="UTF-8">
+<style>
+body{font:14px system-ui,-apple-system,sans-serif;color:#17243a;padding:18px;line-height:1.45}
+h2{font-size:20px;margin:0 0 8px}h3{font-size:14px;margin:18px 0 8px}
+p{margin:6px 0 12px;color:#52627a}
+.code{display:block;background:#f1f4f8;border:1px solid #dce4eb;border-radius:8px;padding:10px;width:100%;box-sizing:border-box;word-break:break-all;font:12px ui-monospace,monospace;resize:vertical}
+pre{white-space:pre-wrap;background:#f1f4f8;border-radius:8px;padding:12px;font:12px ui-monospace,monospace}
+button{border:0;border-radius:7px;background:#164fb2;color:#fff;padding:9px 14px;cursor:pointer;margin:5px 5px 5px 0}
+button.secondary{background:#56677c}button.warn{background:#955b28}button:disabled{opacity:.55}
+label{font-weight:600;display:block;margin:12px 0 5px}small{color:#596980}code{background:#f1f4f8;padding:1px 4px}
+#state{font-weight:600;margin:6px 0}#error{color:#9b2c2c;white-space:pre-wrap}
+</style></head><body>
+<h2>iPhone Zkratky</h2>
+<p>Volitelný přístup k provizním souhrnům z vlastního telefonu.</p>
+<div id="state">Načítám nastavení…</div>
+<div><button id="toggle" onclick="toggleGateway()" disabled>Zapnout / vypnout</button><button class="warn" id="rotate" onclick="rotateSecret()" disabled>Vygenerovat nový secret</button></div>
+<label>URL webové aplikace</label><textarea class="code" rows="2" id="endpoint" readonly placeholder="Po nasazení zkopírujte URL /exec sem do Zkratek."></textarea>
+<label>Secret</label><textarea class="code" rows="2" id="secret" readonly></textarea>
+<small>Secret nikdy nevkládejte do URL ani nesdílejte. Po regeneraci stará Zkratka přestane fungovat.</small>
+<h3>Nasazení</h3>
+<p>Apps Script → <strong>Nasadit → Nové nasazení → Webová aplikace</strong>.<br>
+<strong>Spustit jako:</strong> já. <strong>Přístup:</strong> kdokoli (včetně nepřihlášených).<br>
+Zkopírujte URL končící <code>/exec</code>. Zkratka odešle secret v <strong>POST JSON</strong>; gateway je pro jiné požadavky uzavřená.</p>
+<h3>Apple Zkratka</h3>
+<p>Akce <strong>Získat obsah URL</strong>: metoda <strong>POST</strong>, tělo <strong>JSON</strong>, pole <code>secret</code> = hodnota výše. Výsledek je JSON slovník; získejte klíč <code>notification</code> a použijte jej v akci <strong>Zobrazit oznámení</strong>. Zobrazujte jen při <code>ok=true</code>.</p>
+<label>Výchozí text oznámení (4 řádky)</label>
+<pre>Celkem 269 745,52 Kč (4 524 Dok)
+Včera 843,20 Kč (12 Dok)
+Dnes 125,00 Kč (3 Dok)
+Poslední sync 20:51</pre>
+<h3>JSON proměnné</h3>
+<p><code>totalCommission</code>, <code>yesterdayCommission</code>, <code>todayCommission</code>, <code>totalDocuments</code>, <code>yesterdayDocuments</code>, <code>todayDocuments</code>, <code>lastSync</code>, <code>lastSyncTime</code>, <code>lastClosureDate</code>, <code>daysSinceLastClosure</code>, <code>currency</code>, <code>notification</code>.</p>
+<small>Záporné dobropisy jsou započtené. Hodnoty vycházejí z posledního dokončeného importu. Více měn: použijte pole <code>currencies</code>; rozdílné měny se nesčítají.</small>
+<div id="error" role="status"></div>
+<script>
+let current=null;
+function show(x){current=x;document.getElementById('state').textContent=x.enabled?'Gateway: zapnuta':'Gateway: vypnuta';
+document.getElementById('secret').value=x.enabled?x.secret:'';
+document.getElementById('endpoint').value=x.url&&x.url.endsWith('/exec')?x.url:'';
+document.getElementById('toggle').disabled=false;
+document.getElementById('toggle').textContent=x.enabled?'Vypnout gateway':'Zapnout gateway';
+document.getElementById('rotate').disabled=!x.enabled;document.getElementById('error').textContent='';}
+function fail(error){document.getElementById('error').textContent=error?.message||'Chyba spojení.';
+document.getElementById('toggle').disabled=false;document.getElementById('rotate').disabled=!current?.enabled;}
+function toggleGateway(){document.getElementById('toggle').disabled=true;
+google.script.run.withSuccessHandler(show).withFailureHandler(fail).updateIPhoneGateway(!current.enabled);}
+function rotateSecret(){if(!confirm('Nový secret okamžitě zneplatní dosavadní Apple Zkratky. Pokračovat?'))return;
+document.getElementById('rotate').disabled=true;
+google.script.run.withSuccessHandler(show).withFailureHandler(fail).rotateIPhoneGatewaySecret();}
+google.script.run.withSuccessHandler(show).withFailureHandler(fail).getIPhoneGatewaySettings();
+</script></body></html>

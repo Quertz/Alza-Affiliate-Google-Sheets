@@ -85,5 +85,7 @@ function affDocumentDetail_(cookie,docId) {
 function affIdentity_(cookie) {
   const user=affGet_(cookie,'/api/authentication/current-user','');
   if(!user || user.idp===undefined||user.idp===null)throw new Error('current-user: chybí IDP.');
-  return {idp:String(user.idp),eshopName:String(user.eshopName||'')};
+  return {idp:String(user.idp),eshopName:String(user.eshopName||''),
+    companyName:String(user.companyName||''),email:String(user.email||''),
+    partnerName:[user.firstName,user.lastName].filter(Boolean).join(' ').trim()};
 }

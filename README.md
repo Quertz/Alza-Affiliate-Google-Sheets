@@ -1,89 +1,194 @@
-# Alza Affiliate to Google Sheets (PUBLIC v0.99)
+# Alza Affiliate → Google Sheets
 
-Neoficiální, komunitní, **read-only** konektor do Google Sheets pro **Alza.cz affiliate účet na Google Sheet**. Načítá provizní doklady, dobropisy, historická vyúčtování, jednotlivé produktové položky a agregace. Nevyžaduje server, cloudové heslo u autora ani placenou databázi; vše běží pod vlastním Google účtem, data zůstávají i při přerušení načítání.
+**Verze 1.0.0** · neoficiální komunitní konektor.
 
-> **Nejde o oficiální ani podporované Alza API.** Používá interní webové endpointy pozorované v Alza Affiliate administraci. Alza může jejich chování kdykoliv změnit. Ověřeno lokálními integračními testy se simulovaným API; veřejnou v1.0 je nutné ještě ověřit v reálném Apps Script účtu.
+Stahuje provize, dobropisy, jednotlivé doklady, vyúčtování a položky produktů do Google Sheets. Pro jedno IDP v jeho vlastním Google účtu. Máte víc IDP? Udělejte si víc Sheetů a v jednom Master propojte, určitě si poradíte.
 
-## Instalace (10–15 minut)
+> **Stahujte než to smažou!** Interní endpointy Alza Affiliate nejsou veřejně garantované, občas vás chytne Cloudflare, občas Šlachta. Lokální testy používají syntetické odpovědi. Cílem je lepší optimalizace kampaní a lepší přehled o výdělku v rámci Alza Affiliate.
 
-1. Na [Google Sheets](https://sheets.google.com) vytvoř **novou prázdnou tabulku**. Neinstaluj to do tabulky se stávajícím soukromým affiliate reportingem.
-2. V ní klikni **Rozšíření → Apps Script**.
-3. Vlož **6 souborů `.gs`** ze složky [`src`](src) jako samostatné soubory se stejnými názvy: `Config.gs`, `Api.gs`, `Sheets.gs`, `Sync.gs`, `Items.gs`, `Setup.gs`. Výchozí `Kód.gs` smaž nebo v něm nenechávej duplicitní funkce. Vše je case sensitive, takže na velikosti prvních písmen souborů záleží ;-).
-4. Přidej soubor **HTML → `Set`**, vlož obsah [`src/Set.html`](src/Set.html). Není to webová aplikace: HTML funguje jako instalační dialog uvnitř Google Sheets.
-5. Volitelně vlož manifest [`src/appsscript.json`](src/appsscript.json) přes **Nastavení projektu → Zobrazit soubor manifestu `appsscript.json` v editoru**. Není nutný pro základní provoz.
-6. Ulož projekt. V Apps Scriptu spusť funkci **`openAffiliateSetup`** (Google požádá o oprávnění k tabulce, externím HTTP požadavkům a časovačům). Nebo znovu otevři Google Sheet a použij menu **Alza Affiliate → Nastavení / instalace**.
-7. V průvodci vyplň affiliate **e-mail, heslo a datum od**. Klikni **Ověřit přístup a nainstalovat**. Přihlášení se ověří přímo na `affiliate.alza.cz` a nastaví se časové spouštěče.
-8. V menu **Alza Affiliate → Synchronizovat provize teď** spusť první historický import. Po jeho úspěšném dokončení spusť **Synchronizovat položky teď**. Produktové detaily se dále doplňují po dávkách.
-9. V Apps Scriptu otevři **Spouštěče**. Musíš mít dva time-driven spouštěče: `autoAffiliateSync` (4 hodiny) a `autoAffiliateItems` (2 hodiny). Počítač už nemusí být zapnutý.
+## Instalace (10 minut)
 
-**Pozor:** GitHub ZIP se do Google Sheets sám nenainstaluje. Musíš nejprve vytvořit vlastní Google Apps Script projekt navázaný na Sheet a vložit soubory. Průvodce potom zajistí všechny zbývající kroky včetně uložení pověření a nastavení časovačů. Tento postup záměrně nevyžaduje zveřejnit webovou aplikaci ani posílat heslo provozovateli jiného serveru.
+1. Založ **novou prázdnou Google tabulku**.
+2. Otevři **Rozšíření → Apps Script**.
+3. Ze složky `src/` vytvoř ve stejné tabulce soubory typu skript: `Config.gs`, `Api.gs`, `Sheets.gs`, `Setup.gs`, `Sync.gs`, `Items.gs`, `iPhoneGateway.gs`. Každý má v Apps Scriptu své jméno **bez přípony `.gs`**. Předvytvořený prázdný `Kód.gs` můžeš odstranit. Všechny jména souborů jsou CASE-SENSITIVE, tak si dávej pozor.
+4. Vytvoř soubor typu **HTML** s přesným názvem **`Set`** a vlož obsah `src/Set.html`. Dále vytvoř HTML soubor **`PhonePanel`** a vlož `src/PhonePanel.html`. Používá se `HtmlService.createHtmlOutputFromFile('Set')`, tedy velké `S`. 
+5. Volitelně nahraď manifest `appsscript.json` (Nastavení projektu → zobrazit manifest); doporučená časová zóna `Europe/Prague` je již v něm.
+6. Vše ulož, vylez a zalez zpět (nebo) obnov Google Sheet a v horním menu se za chvilku na posledním místě objeví (a tedy zvol) **Alza Affiliate → Nastavení / instalace**.
+7. Zadej svůj affiliate e-mail, heslo a datum historie odkdy se má synchronizovat (upozorňuji, že letité účty mohou trva několik dní až týdnů než bude komplet historie). Volitelně zaškrtni **Povolit iPhone Zkratky** (standardně vypnuto). Instalátor ověří aktuálního uživatele přes Alza Affiliate, vytvoří listy a **dva časovače**.
+8. V menu spusť **Synchronizovat provize teď** a poté **Synchronizovat položky teď**. V listu `Sync Log` ověř výsledek. Další dávky už poběží samy.
 
-## Automatické spuštění
+Po vložení souborů už **není potřeba další instalační skript ani server**. Instalaci nelze provést pouhým importem ZIP do Google Sheets. Pokud je v novém Sheetu jediný prázdný výchozí list, automaticky se změní na `Dashboard`.
 
-| Úloha | Interval | Co dělá |
+### Automatika
+
+| Funkce | Interval | Účel |
 |---|---|---|
-| `autoAffiliateSync` | každé 4 hodiny | Neuzavřené doklady + historie žádostí o vyúčtování a jejich dokladů, deduplikace, souhrny a Dashboard |
-| `autoAffiliateItems` | každé 2 hodiny | Nové položky až 25 dokladů/běh, kontrola součtu, produkty, hodiny, TOP 10 týdnů/měsíců |
+| `autoAffiliateSync` | **4 hodiny** | Doklady, dobropisy, vyúčtování, jejich kontrola, denní souhrny a hodinová analytika |
+| `autoAffiliateItems` | **1 hodina** | Dotahování produktových detailů postupně až 25 dokladů na běh; TOP 10 a produkty |
 
-Časovače vytváří Apps Script pod **Google uživatelem, který provedl instalaci**. Není nutné mít zapnutý prohlížeč. Jsou přibližné, neběží v přesnou minutu. Chybné doklady se znovu zkusí nejdříve za 24 hodin; nedávno vytvořené a již zkontrolované doklady se kontrolují přibližně jednou za 7 dní. Zamčené souběžné běhy se bezpečně přeskočí.
+Instalátor při opakovaném spuštění staré dva spouštěče nejprve odstraní, takže je neduplikuje. Google Apps Script může běh posunout, nejde o přesně určený čas. Celá historie může podle objemu dokladů a kvót Googlu trvat déle. Při první instalaci zvolte počáteční datum dostatečně daleko do historie. `TOP Hodiny life` představuje **celou dosud dostupnou a staženou historii od tohoto data**, ne nutně absolutně všechny historické objednávky.
 
-## Výstupní listy
+## Listy
 
-| List | Obsah |
+| List | Údaje |
 |---|---|
-| `Dashboard` | Přehled provizí podle měny, kontrola vyúčtování, graf za poslední dostupné dny (jedna měna) |
-| `Alza Souhrn` | Účet, IDP, součty kladných a záporných provizí po měnách |
-| `Sync Log` | Čas, úloha, stav, stručný provozní protokol bez hesel |
-| `Denní profit` | **Provizní výsledek bez nákladů**, datum a měna (nejde o čistý ekonomický zisk) |
-| `Alza doklady` | Kompletní dostupná archivovaná historie jednotlivých provizních dokladů |
-| `Alza denni` | Provize, dobropisy a čistý provizní výsledek po dnech |
-| `Alza položky` | Produktové položky, množství, cena (`price` API), sazba, absolutní provize, klikatelný produktový odkaz |
-| `Alza položky stav` | Audit počtu položek a součtu jejich provizí proti dokladu |
-| `Alza produkty` | Produktové souhrny včetně dobropisů, počtů objednávek, kusů a provizí |
-| `Alza hodiny` | Provize a doklady podle **hodiny vytvoření dokladu** |
-| `Alza položky průběh` | Kolik dokladů je zkontrolováno, jaké chyby zbývají |
-| `Alza vyúčtování` | Žádosti o vyúčtování, jejich doklady, částky a kontrola součtu |
-| `TOP10 týdny` | 10 nejvýnosnějších produktů za každý ISO týden a měnu |
-| `TOP10 měsíce` | 10 nejvýnosnějších produktů za každý měsíc a měnu |
+| `Dashboard` | Přehled provizí, graf, aktuální identita partnera a stav stažení položek |
+| `Souhrn` | Provize a dobropisy podle měny, kontrola vyúčtování |
+| `Sync Log` | Průběh automatizací a případná upozornění |
+| `Denní profit` | Denní provize (bez zbytečného doplňujícího komentáře) |
+| `Doklady` | Jednotlivé provizní doklady a dobropisy |
+| `Provize po dnech` | Denní agregace podle měny |
+| `Polozky` | Produktové položky, sazby, částky, odkazy |
+| `Polozky sync status` | Validace stažení jednotlivých dokladů; celkový průběh je na Dashboardu |
+| `Produkty` | Nejvýnosnější produkty za celou staženou historii |
+| `TOP Hodiny life` | **Všech 24 hodin**, čisté provize a počty dokladů ze **všech stažených dokladů**, bez závislosti na detailu produktů |
+| `TOP Hodiny Měsíc` | Totéž výhradně za **předchozí úplný kalendářní měsíc** (od prvního do posledního dne) |
+| `Alza vyúčtování` | Výpis a kontrola historických vyúčtování |
+| `TOP10 týdny` | Produktové TOP 10 za každý ISO týden a měnu |
+| `TOP10 měsíce` | Produktové TOP 10 za každý kalendářní měsíc a měnu |
 
-## TOP 10 – jak se počítá
+Počet listů: **14**. Původní samostatný list průběhu položek se nevytváří, protože oba požadované názvy by byly identické (`Polozky sync status`); souhrnný průběh je přímo na Dashboardu a jednotlivé kontroly zůstávají v samostatném detailním listu.
 
-- `TOP10 týdny` používá týdny podle **ISO 8601** (pondělí až neděle; rok týdne se může lišit od kalendářního roku na přelomu prosince a ledna).
-- `TOP10 měsíce` používá kalendářní měsíc ve formátu `YYYY-MM`.
-- Za období a produkt se sčítají **položkové provize** včetně záporných dobropisů. Nevypočítáváme žebříček podle ceny produktu.
-- Do žebříčku vstupují **jen doklady**, kde součet provizí položek odpovídá provizi celého dokladu (tolerance 0,05 jednotky měny).
-- Jde o žebříčky jen z **dosud stažených položek**, při prvním doplňování historie jsou tedy průběžné.
+## Zobrazení čísel a dat
 
-## Měny a čas
+- **Částky, ceny, sazby i provize:** `#,##0.00` podle českého locale. Například číslo `269745.5186` se zobrazí jako `269 745,52`. **Uložená hodnota se nezaokrouhluje**, pro Looker Studio se předává původní numerická hodnota.
+- **Datum dokladu / denní provize / datum vyúčtování / historie od:** `dd.mm.yyyy`. Například nativní datum `2026-02-10` se ukáže jako `10.02.2026`, **nikoliv jako text**.
+- **Měsíční přehled hodin:** skutečné datum prvního dne měsíce zobrazené `mm.yyyy`.
+- **Počty, pořadí a hodiny:** celé číslo s oddělovači tisíců (`#,##0`). **Identifikátory** objednávek a dokladů, kódy produktů a ISO týdny zůstávají textové dimenze.
+- **Výjimka:** timestampy dodané API bez explicitního časového pásma, například „Čas dokladu (zdroj)“, se ponechávají jako původní text. Stejně tak technické auditní UTC ISO timestampy. Není bezpečné jim domýšlet časovou zónu.
 
-Provize se zobrazují v **měně, kterou daný affiliate účet vrací v `currencyCode`**. Uživatel registrovaný přes alza.de tak může mít EUR provize i z nákupů na alza.cz; jazyk rozhraní měnu neurčuje. Výstupy různých měn se nesčítají. Žádné vlastní kurzové přepočty nejsou součástí v1.0.
+Při instalaci se nastaví locale Google Sheetu na **Česká republika (`cs_CZ`)** a časová zóna na **Europe/Prague**, nezávisle na měně affiliate provizí. Pro mezinárodní affiliate účty to **nijak nepřepočítává EUR, CZK nebo HUF**; měna každé částky pochází z API.
 
-Časová analytika se opírá o `createdDate` finančního dokladu. Přesné časové pásmo a zda datum odpovídá okamžiku **dokončení objednávky**, dosud nejsou nezávisle potvrzené. List proto uvádí **hodina dokladu**, nikoliv tvrzení o hodině nákupu. API `price` se zachovává v původní sémantice – není potvrzeno, zda jde o cenu za kus / bez DPH / s DPH.
+## Looker Studio (dříve Data Studio)
 
-## Zabezpečení
+**Připoj konkrétní datový list jako zdroj Google Sheets**, ne vizuální Dashboard. Tabulky používají konzistentní sloupce s hlavičkou v prvním řádku, **datum jako nativní hodnotu Google Sheets**, numerické provize jako čísla a ID jako text. V Lookeru doporučuji typy polí: `Datum` → Date, `Měna` → Text, `Provize` / `Čisté provize` → Number/Currency podle kontextu, `Hodina` → Number, ID dokladů a produktů → Text.
 
-- Údaje se ukládají přes `PropertiesService.getUserProperties()` v **účtu uživatele, který instaluje a vytváří spouštěče**. Heslo se **nikdy nezapisuje do zdrojových souborů, tabulky nebo Sync Logu**.
-- **Nesdílej Google Sheet ani Apps Script s editory**, kterým nedůvěřuješ. Editor skriptu může upravit kód a získat data nebo pověření při jeho spuštění pod tvým účtem. `UserProperties` není nezávislý hardwarový trezor.
-- Autor tohoto repozitáře nemá přístup k přihlašovacím údajům ani k tvým datům. Komunikace probíhá pouze z tvého Apps Scriptu na `affiliate.alza.cz` a v Google infrastruktuře.
+Nejlepší výchozí zdroje: `Doklady` pro transakce, `Provize po dnech` pro trend, `Polozky` pro produkty, `TOP Hodiny life` a `TOP Hodiny Měsíc` pro časové heatmapy. Hodnota `Měsíc` v hodinovém měsíčním listu je skutečné datum prvního dne předchozího měsíce, pouze vizuálně formátované jako `YYYY-MM`. Produktové TOP 10 mají období jako text `YYYY-Www` / `YYYY-MM`.
 
-## Omezení v1.0
+Když se v datech vyskytuje více měn, **nevytvářej součty různých měn** bez výslovného přepočtu. Tento projekt žádný FX přepočet nedělá.
 
-- Neoficiální webové API může změnit struktury bez upozornění; žádný garanční SLA.
-- Import historie závisí na tom, co partnerský účet a upstream stále zpřístupňují. U starších dokladů bez dostupného vyúčtování nelze úplnost slíbit.
-- Úplný detail vyúčtování může být rozdělen na desítky stránek; u velkých účtů může jednorázová synchronizace narazit na limit 6 minut Apps Scriptu. Následující běhy neobnovují neúplné stránky po jednotlivých detailech; případný limit je třeba řešit menším obdobím a další verzí.
-- Google Sheets má limity kapacity a výkonu. Pro rozsáhlé účty nebo veřejnou centralizovanou službu je vhodnější databáze.
-- Neimportuje reklamní náklady, nepočítá ROI ani skutečný podnikatelský zisk, ale to si můžete dopsat do dalších listů a používat odkazy mezi listy, poradíte si :-).
-- Projekt slouží jedinému affiliate účtu na jednu tabulku. Pro druhý účet vytvoř druhou nezávislou tabulku.
-- Tohle ReadMe psal ChatGPT, protože já jsem líný jako to prase.
+## Význam provizí a hodin
 
-## Vývoj / testy
+- Výše provize pochází přímo z `provision` dokumentu nebo položky. **Záporné dobropisy se odečítají.** Provize z vyúčtování se nezapočítávají podruhé.
+- **Dobropis 0** je platný záznam. Pokud `documentType` odporuje znaménku nenulové částky, import **nepřerušíme**: částka zůstane s původním znaménkem a do `Sync Log` jde upozornění. Nikdy znaménko nevymýšlíme.
+- `TOP Hodiny life` a `TOP Hodiny Měsíc` používají **hodinu `createdDate` provizního dokladu**. Zdroj neprokazuje, že jde přesně o čas dokončení nákupu, ani explicitně neudává časové pásmo. Hodina se proto nepřepočítává na jinou zónu.
+- `TOP10 týdny` a `TOP10 měsíce` vycházejí z jednotlivých položek jen těch dokladů, kde součet položek souhlasí s provizí dokladu. Během prvotního doplňování jsou žebříčky průběžné.
+- Měna provizí se bere z `currencyCode` daného dokladu, **nikoliv** z jazyka administrace nebo země produktového e-shopu. Přihlášení německého účtu může produkovat EUR.
+
+## Bezpečnost a omezení
+
+Heslo je v Apps Scriptu uložené do **User Properties** účtu vlastníka, nikoli ve zdrojovém kódu, Sheetu či GitHubu. Nejde o specializovaný trezor. Neposkytuj editorům přístup k projektu s uloženým affiliate účtem a zkontroluj oprávnění při první instalaci. Kontaktní údaje partnera, jako obchodní název a e-mail, se zobrazují v jeho **soukromém Dashboardu**.
+
+Google Apps Script má limity délky běhu a počtu HTTP požadavků. Velmi dlouhá historická vyúčtování se mohou na jediný běh nevejít; v takovém případě bude potřeba další iterace s dávkováním vyúčtování. Nepublikuj obsah svého Sheetu s objednávkami jako veřejný dokument.
+
+**iPhone Gateway** je volitelný modul se samostatným přístupovým secretem. Nasazení jako webové aplikace je jednorázový ruční krok, který instalátor Googlu nemůže automaticky potvrdit. Podrobný postup je na konci README.
+
+## Testování
 
 ```bash
 node tests/smoke.test.js
 ```
 
-Testy jsou zcela offline s anonymními simulovanými odpověďmi. Testují instalaci, 4h/2h triggery, obnovu historie, EUR měnu, dobropis, stránkování položek, ISO týdny, produktové žebříčky a opakovaný běh. Nejsou náhradou testu s reálným účtem.
+Testy běží offline proti syntetickým datům. Kontrolují 4h/1h triggery, e-shop měny, autentizaci, doklady, 857 stránkovaných záznamů ve vyúčtování, nulové a neobvyklé dobropisy, TOP 10, hodinovou historii a nativní datumová pole pro Looker Studio.
 
-## Licence a odpovědnost
+**DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE.** Nejde o oficiální produkt ani záruku podpory ze strany Alza.cz a.s.
+Licence: [LICENCE](LICENCE)
 
-WTFPL – viz [`LICENSE`](LICENSE). Název Alza je použit pouze k identifikaci cílové služby; tento projekt není oficiálním produktem společnosti Alzacz a.s.
+---
+
+## iPhone Zkratky (volitelné) – instalace a notifikace
+
+### 1. Aktivace a secret
+
+V instalačním okně zaškrtni **„Povolit iPhone Zkratky“**. Bez zaškrtnutí se gateway nevystavuje a nepřidává se žádný časovač. Volba během instalace pouze povolí načítání souhrnů, nepublikuje webovou aplikaci.
+
+Po dokončení instalace a první úspěšné synchronizaci v Google Sheetu otevři menu **Alza Affiliate → Připojení iPhone Zkratek**. V okně uvidíš:
+
+- zda je gateway zapnutá, její přístupový **secret** a URL nasazené webové aplikace, pokud již existuje,
+- tlačítko pro aktivaci/deaktivaci a **Vygenerovat nový secret** (okamžitě zneplatní ten starý),
+- seznam klíčů JSON a ukázku notifikace.
+
+Secret se generuje pomocí dvou náhodných UUID a ukládá pouze ve vlastních **Google Apps Script User Properties**. Nepiš jej do kódu, tabulky, GitHubu ani do URL. Drž projekt a tabulku mimo sdílený přístup editorů.
+
+### 2. Jednorázové nasazení Apps Script Web App
+
+1. V Apps Script klikni **Nasadit → Nové nasazení** a zvol typ **Webová aplikace**.
+2. Vyber **Spustit jako: Já** (Google účet vlastnící tabulku a instalaci).
+3. **Kdo má přístup: Kdokoli** (v některých rozhraních „Anyone“, včetně nepřihlášených). Přístup povol jen pokud to účet/doména umožňuje a souhlasíš s veřejně dostupnou adresou chráněnou secretem.
+4. Dokonči nasazení, případně odsouhlas nové oprávnění, a zkopíruj produkční URL končící **`/exec`**. Testovací URL `/dev` není vhodná pro iPhone (obvykle vyžaduje přístup editora).
+5. V Google Sheetu se vrať do **Alza Affiliate → Připojení iPhone Zkratek**; v okně zkopíruj URL a secret.
+
+**Pozor:** Web App je přístupná na internetu, ale data vrací jen při správném dlouhém secretu v těle POST požadavku. Všechny GET požadavky i POST s chybným secretem vrací pouze chybový JSON. Obsah odpovědi pochází ze souhrnů ve tvé tabulce, nikoli z affiliate hesla. Pokud chceš gateway úplně zrušit, v menu ji vypni **a odstraň nasazení webové aplikace**. Google Apps Script ContentService používá HTTP přesměrování: Apple Zkratky musí následovat redirect.
+
+### 3. Vytvoření Zkratky na iPhonu
+
+V aplikaci **Zkratky → + → Nová zkratka**, např. „Alza provize“:
+
+1. Přidej akci **URL** a vlož produkční `/exec` URL z kroku 2.
+2. Přidej akci **Získat obsah URL (Get Contents of URL)**, metoda **POST**, požadované tělo **JSON**, přidej textový klíč **`secret`** s hodnotou z instalačního dialogu. Nemusíš posílat email ani heslo.
+3. Ve výsledku otevři JSON slovník (případně použij akci **Získat slovník ze vstupu** / **Get Dictionary from Input** podle verze iOS).
+4. Nejdřív ověř klíč **`ok`**. Pokud není `true`, zobraz chybu a nepokračuj.
+5. Ze slovníku načti klíč **`notification`** a vlož ho do akce **Zobrazit oznámení (Show Notification)**. Tato proměnná už obsahuje naformátovanou čtyřřádkovou zprávu včetně měny a počtu dokladů.
+6. Spusť Zkratku ručně; pokud má notifikace chodit automaticky, přidej vlastní **Osobní automatizaci** v iOS Zkratkách (například denně ve zvolený čas). Přenos JSON samotný notifikace neposílá a automatizace Apps Scriptu ani telefon samy neprobudí.
+
+#### Výchozí oznámení (4 řádky)
+
+```text
+Celkem 9 745,52 Kč (524 Dok)
+Včera 843,20 Kč (12 Dok)
+Dnes 125,00 Kč (3 Dok)
+Poslední sync 20:51
+```
+
+Pro **EUR/HUF** se jednotka automaticky změní z „Kč“ na kód měny. Částky jsou čisté provize ze stažených dokladů: dobropisy snižují součet a doklady s nulovou provizí se započítávají do počtu. „Včera“ a „Dnes“ používají kalendářní dny v `Europe/Prague`. Uvedené hodnoty se mění po dokončení čtyřhodinového importu provizí; hodinová synchronizace položek součty těchto dokladů nemění.
+
+### 4. Všechny dostupné proměnné JSON
+
+| JSON klíč | Typ | Význam |
+|---|---|---|
+| `ok` | boolean | Po úspěšném čtení `true`; při chybě `false` a `error` |
+| `currency` | string/null | Měna provizí konkrétního účtu |
+| `totalCommission` | number/null | Netto provize ze všech stažených dokladů |
+| `yesterdayCommission` | number/null | Netto provize za včerejší kalendářní den |
+| `todayCommission` | number/null | Netto provize za dnešní den |
+| `totalDocuments` | integer/null | Počet dokladů celkem |
+| `yesterdayDocuments` | integer/null | Počet včerejších dokladů |
+| `todayDocuments` | integer/null | Počet dnešních dokladů |
+| `lastSync` | ISO string/null | UTC timestamp dokončeného importu **dokladů** |
+| `lastSyncTime` | string/null | Poslední synchronizace, hodina `HH:mm` v Praze |
+| `lastClosureDate` | `YYYY-MM-DD`/null | Datum posledního **přijatého vyúčtování** dle Alza API, nikoliv datum připsání peněz |
+| `daysSinceLastClosure` | integer/null | Počet kalendářních dnů od posledního přijatého vyúčtování |
+| `asOfDate` | `YYYY-MM-DD` | Dnešní den v pražském časovém pásmu |
+| `timezone` | string | `Europe/Prague` |
+| `notification` | string/null | Hotová čtyřřádková zpráva |
+| `currencies` | array | Provize a počty rozdělené podle měn (`total`, `yesterday`, `today`: každé má `commission` a `documents`) |
+
+Příklad úspěšné odpovědi (fiktivní částky):
+
+```json
+{
+  "ok": true,
+  "currency": "CZK",
+  "totalCommission": 269745.5186,
+  "yesterdayCommission": 843.2,
+  "todayCommission": 125,
+  "totalDocuments": 4524,
+  "yesterdayDocuments": 12,
+  "todayDocuments": 3,
+  "lastSync": "2026-10-20T18:51:00.000Z",
+  "lastSyncTime": "20:51",
+  "lastClosureDate": "2026-10-04",
+  "daysSinceLastClosure": 16,
+  "asOfDate": "2026-10-20",
+  "timezone": "Europe/Prague",
+  "notification": "Celkem 269 745,52 Kč (4 524 Dok)\nVčera 843,20 Kč (12 Dok)\nDnes 125,00 Kč (3 Dok)\nPoslední sync 20:51"
+}
+```
+
+Čísla v JSON zůstávají **strojově numerická s plnou přesností**; pouze `notification` je formátovaný text. Hodnoty odpovídají **stažené historii**, ne nutně všem dokladům za dobu existence účtu.
+
+Pokud je v archivu více měn, `currencies` obsahuje oddělené statistiky pro každou. **Globální finanční součty a `notification` budou `null`**, protože EUR a CZK nelze bezpečně sečíst. V takovém případě vytvoř vlastní notifikaci po měnách.
+
+Vypnutí gateway v menu zabrání dalším autorizovaným načtením; regenerace secretu zneplatní původní Zkratky. Nové nasazení po změně zdrojového kódu může vyžadovat aktualizaci existujícího webového deploymentu.
+
+Dokumentace Google: [Apps Script Web Apps](https://developers.google.com/apps-script/guides/web) a [Content Service – přesměrování](https://developers.google.com/apps-script/guides/content).

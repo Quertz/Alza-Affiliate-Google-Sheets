@@ -4,7 +4,7 @@
 body{font-family:system-ui,Arial,sans-serif;color:#182335;padding:18px;font-size:14px}
 h2{margin:0 0 8px;font-size:20px}p{line-height:1.55;color:#495971}
 label{display:block;font-weight:600;margin:12px 0 5px}input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #b6c4d5;border-radius:8px;font-size:14px}
-button{background:#155edf;color:#fff;padding:11px 14px;border:0;border-radius:8px;margin-top:18px;font-weight:650;cursor:pointer;width:100%}
+input[type=checkbox]{width:auto;accent-color:#155edf;margin-right:8px}button{background:#155edf;color:#fff;padding:11px 14px;border:0;border-radius:8px;margin-top:18px;font-weight:650;cursor:pointer;width:100%}
 button:disabled{opacity:.6;cursor:wait}.note{font-size:12px;color:#66768b;margin-top:12px}
 #message{white-space:pre-wrap;margin-top:12px;font-size:13px}
 </style></head><body>
@@ -14,9 +14,10 @@ button:disabled{opacity:.6;cursor:wait}.note{font-size:12px;color:#66768b;margin
 <label for="email">Affiliate e-mail</label><input id="email" type="email" autocomplete="username" required>
 <label for="password">Affiliate heslo</label><input id="password" type="password" autocomplete="current-password" required>
 <label for="start">Historie od</label><input id="start" type="date" value="2026-01-01" required>
+<label style="display:flex;align-items:center;margin-top:15px"><input id="iphoneGateway" type="checkbox">Povolit iPhone Zkratky (volitelné)</label>
 <button id="submit" type="submit">Ověřit přístup a nainstalovat</button>
 </form>
-<div class="note">Spouštěče: provize a vyúčtování každé 4 hodiny, produktové položky každé 2 hodiny. Po instalaci lze okamžitě spustit import přes menu Alza Affiliate.</div>
+<div class="note">Spouštěče: provize a vyúčtování každé 4 hodiny, produktové položky každou hodinu. Po instalaci lze okamžitě spustit import přes menu Alza Affiliate.</div>
 <div id="message" role="status" aria-live="polite"></div>
 <script>
 const form=document.getElementById('setup'),btn=document.getElementById('submit'),out=document.getElementById('message');
@@ -24,10 +25,12 @@ form.addEventListener('submit',e=>{
   e.preventDefault();btn.disabled=true;out.textContent='Ověřuji účet a instaluji časovače…';
   const input={email:document.getElementById('email').value,
     password:document.getElementById('password').value,
-    start:document.getElementById('start').value};
+    start:document.getElementById('start').value,
+    iphoneGateway:document.getElementById('iphoneGateway').checked};
   google.script.run.withSuccessHandler(result=>{
     document.getElementById('password').value='';
-    out.textContent=result.message+'\nIDP: '+result.idp+'\nZačátek historie: '+result.start;
+    out.textContent=result.message+'\nIDP: '+result.idp+'\nZačátek historie: '+result.start+
+      (result.iphoneGateway?'\niPhone: otevřete Alza Affiliate → Připojení iPhone Zkratek.':'');
     btn.disabled=false;
   }).withFailureHandler(error=>{
     document.getElementById('password').value='';
