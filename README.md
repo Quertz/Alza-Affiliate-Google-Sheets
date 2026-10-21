@@ -91,6 +91,10 @@ node tests/smoke.test.js
 
 Testy běží offline proti syntetickým datům. Kontrolují 4h/1h triggery, e-shop měny, autentizaci, doklady, 857 stránkovaných záznamů ve vyúčtování, nulové a neobvyklé dobropisy, TOP 10, hodinovou historii a nativní datumová pole pro Looker Studio.
 
+## PUBLIC raw tracking (od 1.0.1)
+Doklady, Polozky a Produkty obsahují pět nových sloupců campaign, banner_id, bannerName, referrer, source. Ukládají surové hodnoty, které partner přenesl do interních záznamů Alza Affiliate. Žádné prefixy ani názvosloví nejsou předepsány. Chybějící hodnoty jsou prázdné. Převod object/array hodnot na JSON text je technický; případné řetězce podobné vzorci jsou v Sheets bezpečně escapované. Sloupce jsou textové dimenze pro Looker Studio.
+
+Produkty rozlišují jeden produkt podle měny i konkrétní kombinace těchto pěti hodnot. TOP10 týdny a TOP10 měsíce se nemění a ukazují celkové produktové žebříčky bez dělení podle zdroje. Při starší instalaci se údaje doplňují postupně přes detailové dotazy (1 h / až 25 dokladů za běh).
 
 **DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE.** Nejde o oficiální produkt ani záruku podpory ze strany Alza.cz a.s.
 
