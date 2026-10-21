@@ -7,14 +7,27 @@ function affBook_() {
 function affTab_(name,headers) {
   const ss=affBook_();let sheet=ss.getSheetByName(name);
   if(!sheet)sheet=ss.insertSheet(name);
+  if(sheet.getMaxColumns()<headers.length)
+    sheet.insertColumnsAfter(sheet.getMaxColumns(),headers.length-sheet.getMaxColumns());
   if(sheet.getLastRow()===0){
     sheet.getRange(1,1,1,headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
     sheet.getRange(1,1,1,headers.length).setFontWeight('bold').setBackground('#e9f2ff');
   }else{
     const actual=sheet.getRange(1,1,1,headers.length).getDisplayValues()[0];
-    if(actual.join('\u001e')!==headers.join('\u001e'))
-      throw new Error('List '+name+' má neznámou strukturu. Nedojde k přepisu.');
+    if(actual.join('\u001e')!==headers.join('\u001e')){
+      // Exactly the 1.0 schema, expanded by five tracking columns only.
+      const isTrackingTable=[AFF.sheets.documents,AFF.sheets.items,AFF.sheets.products].includes(name);
+      const length=headers.length-5;
+      const oldMatches=isTrackingTable && actual.slice(0,length).join('\u001e')===headers.slice(0,length).join('\u001e');
+      const tailEmpty=actual.slice(length).every(x=>x==='');
+      if(!oldMatches || !tailEmpty)
+        throw new Error('List '+name+' má neznámou strukturu. Nedojde k přepisu.');
+      sheet.getRange(1,length+1,1,5).setValues([headers.slice(length)]);
+      sheet.getRange(1,length+1,1,5).setFontWeight('bold').setBackground('#e9f2ff');
+      if(name===AFF.sheets.items)
+        affProps_().setProperty('AFF_TRACK_MIGRATED_AT',affUtc_());
+    }
   }
   return sheet;
 }
@@ -121,9 +134,9 @@ function affWrite_(name,headers,rows) {
   };
   // Column formats are applied after writing; dates stay native Google Sheets dates.
   const textColumns={
-    [AFF.sheets.documents]:[1,2,3,11], [AFF.sheets.payouts]:[1],
-    [AFF.sheets.items]:[1,2,3,6,14], [AFF.sheets.itemState]:[1],
-    [AFF.sheets.products]:[1], [AFF.sheets.topWeeks]:[3],
+    [AFF.sheets.documents]:[1,2,3,11,15,16,17,18,19], [AFF.sheets.payouts]:[1],
+    [AFF.sheets.items]:[1,2,3,6,14,16,17,18,19,20], [AFF.sheets.itemState]:[1],
+    [AFF.sheets.products]:[1,10,11,12,13,14], [AFF.sheets.topWeeks]:[3],
     [AFF.sheets.topMonths]:[3]
   };
   (textColumns[name]||[]).forEach(c=>sheet.getRange(1,c,sheet.getMaxRows(),1).setNumberFormat('@'));
