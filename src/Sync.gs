@@ -1,5 +1,58 @@
 /** Import the one authenticated partner's financial documents and payouts. */
-function affDocFromApi_(raw, identityIdp, origin, paymentId, paymentState) {
+// A large historical archive is NOT downloaded before current commissions.
+// Archive payouts are imported newest-first in bounded 4-hour runs.
+const AFF_PAYOUTS_PER_RUN = 2;
+const AFF_PAYOUT_RUNTIME_MS = 205000;
+
+function affPayoutStatus_(value) {
+  const n=Number(value);
+  return n===0?'Čeká na schválení':n===1?'Přijato':n===2?'Zamítnuto':'Neznámý stav';
+}
+/**
+ * Current and changed payouts first, then recent rechecks, then old rechecks.
+ * Within each tier newest payout date is first. Deterministic ordering means
+ * a failed run does not skip a historical payout: only completed snapshots
+ * stored in 'Alza vyúčtování' count as imported.
+ */
+function affPrioritizePayouts_(payments, known, now) {
+  const stamp=now instanceof Date?now.getTime():Number(now);
+  const ranked=payments.map(pay=>{
+    const old=known.get(String(pay.id));
+    const date=affDate_(pay.dateCreated);
+    const changed=!old || String(old[2])!==affPayoutStatus_(pay.state) ||
+      !Number.isFinite(Number(old[3])) ||
+      Math.abs(Number(old[3])-Number(pay.provision))>AFF.tolerance ||
+      (pay.currencyCode && String(old[7])!==String(pay.currencyCode));
+    if(changed) return {pay,tier:0};
+    const seenAt=Date.parse(String(old[9]||''));
+    const elapsed=Number.isFinite(seenAt)?stamp-seenAt:Infinity;
+    // A permanently mismatching invoice must not consume both slots every
+    // four hours and starve older history. Retry it no more than once/day.
+    if(String(old[8])!=='OK')return {pay,tier:elapsed>=86400000?1:3};
+    const age=Date.parse(date+'T12:00:00Z');
+    const isRecent=Number.isFinite(age) && stamp-age < 14*86400000;
+    const ttl=isRecent?24*3600000:30*86400000;
+    return {pay,tier:elapsed>=ttl?(isRecent?1:2):3};
+  });
+  return ranked.filter(item=>item.tier<3).sort((a,b)=>
+    a.tier-b.tier || String(b.pay.dateCreated||'').localeCompare(String(a.pay.dateCreated||'')) ||
+    Number(b.pay.id)-Number(a.pay.id)).map(item=>item.pay);
+}
+
+/** Public raw click metadata. Never parse affiliate-specific naming conventions. */
+function affDocTracking_(raw,oldRow) {
+  const source=raw&&typeof raw==='object'?raw:{};
+  const aliases=[['campaign'],['bannerId','banner_id'],['bannerName'],['referrer'],['source']];
+  return aliases.map((names,i)=>{
+    const key=names.find(n=>Object.prototype.hasOwnProperty.call(source,n) && source[n]!==undefined);
+    if(key===undefined)return oldRow?String(oldRow[14+i]||''):'';
+    const value=source[key];
+    if(value===null||value===undefined)return '';
+    const rawValue=typeof value==='object'?JSON.stringify(value):String(value);
+    return affSafe_(rawValue);
+  });
+}
+function affDocFromApi_(raw, identityIdp, origin, paymentId, paymentState, oldRow) {
   if(raw.id===null||raw.id===undefined)throw new Error('Finanční doklad nemá ID.');
   const idp=raw.idp===null||raw.idp===undefined ? identityIdp : String(raw.idp);
   if(idp!==identityIdp)throw new Error('IDP finančního dokladu neodpovídá přihlášenému účtu.');
@@ -19,7 +72,7 @@ function affDocFromApi_(raw, identityIdp, origin, paymentId, paymentState) {
     timestamp,type,provision,turnover,currency,raw.closedProvision===true||Boolean(paymentId),
     paymentId?String(paymentId):raw.paymentId?String(raw.paymentId):'',
     paymentState!==undefined&&paymentState!==null?Number(paymentState):raw.paymentState??'',
-    origin,affUtc_()];
+    origin,affUtc_(),...affDocTracking_(raw,oldRow)];
 }
 function affRestoreDocuments_() {
   const map=new Map();
@@ -39,50 +92,74 @@ function affSyncDocuments_() {
   const docMap=affRestoreDocuments_();
   const payoutMap=new Map(affRead_(AFF.sheets.payouts,H.payouts).map(r=>[String(r[0]),r]));
   let hasMismatch=false, signWarnings=0;
-  // We first fetch payout data. A payment amount is validation data, not extra revenue.
-  const payments=affPayments_(cookie,conf.start);
-  for(const pay of payments){
-    const pid=String(pay.id),detail=affPaymentDetail_(cookie,pid);
-    const payment=detail.payment;
-    if(String(payment.idp)!==user.idp)throw new Error('Vyúčtování má jiné IDP.');
-    const declared=affNumber_(pay.provision,'částka vyúčtování '+pid);
-    const sum=detail.documents.reduce((s,r)=>s+affNumber_(r.provision,'položka vyúčtování'),0);
-    const diff=sum-declared;
-    const currency=String(pay.currencyCode||payment.currencyCode||'');
-    if(!/^[A-Z]{3}$/.test(currency))throw new Error('Neznámá měna vyúčtování.');
-    const status=Number(pay.state);
-    payoutMap.set(pid,[pid,affDate_(pay.dateCreated),
-      status===0?'Čeká na schválení':status===1?'Přijato':status===2?'Zamítnuto':'Neznámý stav',
-      declared,sum,diff,detail.documents.length,currency,
-      Math.abs(diff)<=AFF.tolerance?'OK':'NESOUHLASÍ',affUtc_()]);
-    if(Math.abs(diff)>AFF.tolerance)hasMismatch=true;
-    for(const raw of detail.documents){
-      if(affDate_(raw.createdDate)<conf.start)continue;
-      const id=String(raw.id),old=docMap.get(id);
-      const row=affDocFromApi_(Object.assign({},raw,{currencyCode:raw.currencyCode||currency}),
-        user.idp,'VYÚČTOVÁNÍ',pid,status);
-      if(affSignMismatch_(raw))signWarnings++;
-      // Never silently overwrite conflicting amounts returned for the same document.
-      if(old && String(old[12])==='VYÚČTOVÁNÍ' && Math.abs(Number(old[6])-row[6])>AFF.tolerance)
-        hasMismatch=true;
-      if(old && old[4] && !row[4])row[4]=old[4];
-      docMap.set(id,row);
-    }
-  }
-  // Unclosed docs not in any payment remain active. Don't delete missing archived docs.
+  // Always fetch LIVE commissions first: never wait for multi-year invoices.
   const unclosed=affUnclosed_(cookie,conf.start);
   for(const raw of unclosed){
     if(affDate_(raw.createdDate)<conf.start)continue;
     const id=String(raw.id),existing=docMap.get(id);
+    // Preserve already confirmed payout relation when a document appears in
+    // both upstream views. Payment-document details remain authoritative.
     if(existing && String(existing[12])==='VYÚČTOVÁNÍ')continue;
-    const row=affDocFromApi_(raw,user.idp,'NEUZAVŘENÉ',null,null);
+    const row=affDocFromApi_(raw,user.idp,'NEUZAVŘENÉ',null,null,existing);
     if(affSignMismatch_(raw))signWarnings++;
     if(existing && existing[10] && !row[10])row[10]=existing[10];
     if(existing && existing[11]!=='' && row[11]==='')row[11]=existing[11];
     docMap.set(id,row);
   }
-  const docs=Array.from(docMap.values()).sort((a,b)=>String(a[3]).localeCompare(String(b[3]))||Number(a[1])-Number(b[1]));
-  const payouts=Array.from(payoutMap.values()).sort((a,b)=>String(a[1]).localeCompare(String(b[1])));
+  // Historical failures must never cancel the successfully fetched LIVE docs.
+  let queue=[];
+  let historicalErrors=0;
+  try {
+    const payments=affPayments_(cookie,conf.start);
+    queue=affPrioritizePayouts_(payments,payoutMap,Date.now());
+  } catch (_error) {
+    historicalErrors++;
+    affLog_('HISTORIE','VAROVÁNÍ','Seznam vyúčtování nedostupný; aktuální doklady budou uloženy.');
+  }
+  const started=Date.now();
+  let processedPayouts=0, attemptedPayouts=0;
+  for(const pay of queue){
+    if(processedPayouts>=AFF_PAYOUTS_PER_RUN || attemptedPayouts>=8 ||
+       Date.now()-started>AFF_PAYOUT_RUNTIME_MS)break;
+    attemptedPayouts++;
+    try {
+      const pid=String(pay.id),detail=affPaymentDetail_(cookie,pid);
+      const payment=detail.payment;
+      if(String(payment.idp)!==user.idp)throw new Error('Vyúčtování má jiné IDP.');
+      const declared=affNumber_(pay.provision,'částka vyúčtování '+pid);
+      const sum=detail.documents.reduce((s,r)=>s+affNumber_(r.provision,'položka vyúčtování'),0);
+      const diff=sum-declared;
+      const currency=String(pay.currencyCode||payment.currencyCode||'');
+      if(!/^[A-Z]{3}$/.test(currency))throw new Error('Neznámá měna vyúčtování.');
+      const status=Number(pay.state);
+      const nextRow=[pid,affDate_(pay.dateCreated),affPayoutStatus_(status),
+        declared,sum,diff,detail.documents.length,currency,
+        Math.abs(diff)<=AFF.tolerance?'OK':'NESOUHLASÍ',affUtc_()];
+      // Validate the complete payout before mutating the document archive.
+      const additions=[];
+      for(const raw of detail.documents){
+        if(affDate_(raw.createdDate)<conf.start)continue;
+        const id=String(raw.id),old=docMap.get(id);
+        const row=affDocFromApi_(Object.assign({},raw,{currencyCode:raw.currencyCode||currency}),
+          user.idp,'VYÚČTOVÁNÍ',pid,status,old);
+        additions.push([id,row]);
+        if(affSignMismatch_(raw))signWarnings++;
+        if(old && String(old[12])==='VYÚČTOVÁNÍ' && Math.abs(Number(old[6])-row[6])>AFF.tolerance)
+          hasMismatch=true;
+      }
+      payoutMap.set(pid,nextRow);
+      additions.forEach(([id,row])=>docMap.set(id,row));
+      if(Math.abs(diff)>AFF.tolerance)hasMismatch=true;
+      processedPayouts++;
+    } catch (_error) {
+      historicalErrors++;
+      // No raw API content or credentials are written to the public log.
+      affLog_('HISTORIE','VAROVÁNÍ','Přeskočeno chybné vyúčtování; ostatní doklady pokračují.');
+    }
+  }
+  const pendingPayouts=queue.length-processedPayouts;
+  const docs=Array.from(docMap.values()).sort((a,b)=>String(b[4]||b[3]).localeCompare(String(a[4]||a[3]))||Number(b[1])-Number(a[1]));
+  const payouts=Array.from(payoutMap.values()).sort((a,b)=>affDate_(b[1]).localeCompare(affDate_(a[1]))||Number(b[0])-Number(a[0]));
   const dayMap=new Map();
   for(const r of docs){
     const key=r[3]+'|'+r[8];
@@ -126,7 +203,10 @@ function affSyncDocuments_() {
   affRefreshDashboard_(user,conf.start,byCurrency,docs.length,payouts.length,hasMismatch,daily,signWarnings,afterClosure);
   if(signWarnings)affLog_('DOKLADY','VAROVÁNÍ',
     'Nesoulad znaménka a typu u '+signWarnings+' dokladů; částky převzaty z API.');
-  return {documents:docs.length,payouts:payouts.length,mismatch:hasMismatch};
+  if(pendingPayouts>0)affLog_('HISTORIE','PRŮBĚH',
+    'Vyúčtování nyní '+processedPayouts+', zbývá '+pendingPayouts+'. Nejnovější mají přednost.');
+  return {documents:docs.length,payouts:payouts.length,mismatch:hasMismatch,
+    processedPayouts,pendingPayouts,unclosedFetched:unclosed.length,historicalErrors};
 }
 /**
  * Commission not included in an accepted settlement. Use the actual payout

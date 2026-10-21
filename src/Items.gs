@@ -27,6 +27,7 @@ function affLineItems_(detail,doc,now) {
   const hh=Number(timestamp.slice(11,13));
   if(hh<0||hh>23)throw new Error('Neplatná hodina dokladu.');
   const items=[],idSet=new Set();let sum=0;
+  const tracking=affDocTracking_(root,doc);
   for(const item of detail.items){
     const itemId=String(item.id),code=String(item.productCode||'');
     if(!/^\d+$/.test(itemId)||!code||idSet.has(itemId))throw new Error('Neplatné/duplicitní ID položky nebo productCode.');
@@ -37,19 +38,21 @@ function affLineItems_(detail,doc,now) {
     sum+=provision;
     const url='https://www.alza.cz/kod/'+encodeURIComponent(code);
     items.push([doc[1],itemId,doc[2],doc[3],hh,affSafe_(code),url,
-      quantity,price,rate,fixed,provision,cur,doc[10]||'',affSafe_(item.provisionDescription||'')]);
+      quantity,price,rate,fixed,provision,cur,doc[10]||'',affSafe_(item.provisionDescription||''),...tracking]);
   }
   const delta=sum-affNumber_(expected,'provize dokladu');
   const ok=Math.abs(delta)<=AFF.tolerance;
-  return {items,audit:[doc[1],doc[3],cur,detail.items.length,items.length,
+  return {items,tracking,audit:[doc[1],doc[3],cur,detail.items.length,items.length,
     sum,expected,delta,ok?'OK':'NESOUHLASÍ',now]};
 }
 function affSyncItems_() {
   affConfig_();const docs=affRead_(AFF.sheets.documents,H.documents);
   const items=affExistingItems_(),audits=affItemAudit_();
   const docIndex=new Map(docs.map(d=>[String(d[1]),d]));
+  const rowPositions=new Map(docs.map((d,i)=>[String(d[1]),i+2]));
+  const migratedAt=Date.parse(affProps_().getProperty('AFF_TRACK_MIGRATED_AT')||'');
   docs.forEach(d=>{d[3]=affDate_(d[3]);if(!d[3])throw new Error('Neplatné datum v archivu dokladů.');});
-  const ordered=docs.slice().sort((a,b)=>String(b[3]).localeCompare(String(a[3]))||Number(b[1])-Number(a[1]));
+  const ordered=docs.slice().sort((a,b)=>String(b[4]||b[3]).localeCompare(String(a[4]||a[3]))||Number(b[1])-Number(a[1]));
   const now=affUtc_(),start=Date.now();let checked=0,errors=0;
   let cookie=null;
   for(const doc of ordered){
@@ -62,7 +65,8 @@ function affSyncItems_() {
       Math.abs(Number(audit[6])-Number(doc[6]))<=AFF.tolerance);
     const expectedCount=audit?Number(audit[4]):NaN;
     const hasRows=Boolean(audit && (expectedCount===0 || (items.has(id) && items.get(id).length===expectedCount)));
-    if(audit && audit[8]==='OK' && same && hasRows && (!recent || elapsed<7*86400000))continue;
+    const trackingStale=Number.isFinite(migratedAt) && (!Number.isFinite(lastTime)||lastTime<migratedAt);
+    if(audit && audit[8]==='OK' && same && hasRows && !trackingStale && (!recent || elapsed<7*86400000))continue;
     if(audit && audit[8]!=='OK' && elapsed<24*3600000)continue;
     checked++;
     try{
@@ -71,6 +75,12 @@ function affSyncItems_() {
       const normalized=affLineItems_(result,doc,now);
       // Never use mismatched documents in product analytics.
       if(normalized.audit[8]==='OK')items.set(id,normalized.items);
+      // The detail may provide raw fields missing from the document list.
+      if(normalized.tracking.some((v,i)=>String(doc[14+i]||'')!==String(v))){
+          normalized.tracking.forEach((v,i)=>doc[14+i]=v);
+          affBook_().getSheetByName(AFF.sheets.documents)
+            .getRange(rowPositions.get(id),15,1,5).setNumberFormat('@').setValues([normalized.tracking]);
+      }
       audits.set(id,normalized.audit);
     }catch(e){
       errors++;
@@ -139,13 +149,14 @@ function affItemAnalytics_(rows,auditMap,docsMap) {
     if(!doc || !audit || audit[8]!=='OK' || Math.abs(Number(audit[6])-Number(doc[6]))>AFF.tolerance)return;
     const currency=String(row[12]),code=String(row[5]).replace(/^'(?=[=+@\-])/,'');
     const url=String(row[6]),day=affDate_(row[3]);
-    add(products,currency+'|'+code,{code,currency,url},row);
+    const tracking=Array.from({length:5},(_,i)=>String(row[15+i]||''));
+    add(products,JSON.stringify([currency,code,...tracking]),{code,currency,url,tracking},row);
     const week=affIsoWeek_(day),month=day.slice(0,7);
     add(weeks,week+'|'+currency+'|'+code,{period:week,currency,code,url},row);
     add(months,month+'|'+currency+'|'+code,{period:month,currency,code,url},row);
   });
   const productRows=Array.from(products.values()).sort((a,b)=>b.commission-a.commission).map(p=>[
-    affSafe_(p.code),p.currency,p.orders.size,p.docs.size,p.pieces,p.value,p.commission,p.last,p.url
+    affSafe_(p.code),p.currency,p.orders.size,p.docs.size,p.pieces,p.value,p.commission,p.last,p.url,...p.tracking
   ]);
   function ranking(map){
     const byPeriod=new Map();
